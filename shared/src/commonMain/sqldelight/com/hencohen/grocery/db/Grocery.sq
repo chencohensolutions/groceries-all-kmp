@@ -35,6 +35,13 @@ CREATE TABLE chain_settings (
     enabled INTEGER NOT NULL DEFAULT 1
 );
 
+-- Resolved product photo per barcode; url NULL = looked everywhere, nothing found.
+CREATE TABLE product_image (
+    barcode TEXT NOT NULL PRIMARY KEY,
+    url TEXT,
+    checked_at INTEGER NOT NULL       -- epoch millis
+);
+
 CREATE TABLE order_item (
     barcode TEXT NOT NULL PRIMARY KEY,
     display_name TEXT NOT NULL,
@@ -101,6 +108,14 @@ UPDATE chain_settings SET delivery_fee = ?, min_order = ? WHERE chain = ?;
 
 updateEnabled:
 UPDATE chain_settings SET enabled = ? WHERE chain = ?;
+
+-- product images ------------------------------------------------------
+
+selectImage:
+SELECT * FROM product_image WHERE barcode = ?;
+
+upsertImage:
+INSERT OR REPLACE INTO product_image(barcode, url, checked_at) VALUES (?, ?, ?);
 
 -- order list ------------------------------------------------------------
 

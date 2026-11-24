@@ -6,6 +6,7 @@ import com.hencohen.grocery.db.GroceryDatabase
 import com.hencohen.grocery.domain.ChainSettings
 import com.hencohen.grocery.domain.CompareBasket
 import com.hencohen.grocery.domain.OrderList
+import com.hencohen.grocery.domain.ProductImages
 import com.hencohen.grocery.domain.SearchProducts
 import com.hencohen.grocery.domain.SyncPrices
 import com.hencohen.grocery.model.Chain
@@ -78,6 +79,9 @@ class GroceryCore(driverFactory: DriverFactory) {
     val searchProducts = SearchProducts(db, chains)
 
     val orderList = OrderList(db)
+
+    @OptIn(ExperimentalTime::class)
+    val productImages = ProductImages(http, db) { Clock.System.now().toEpochMilliseconds() }
 
     val compareBasket = CompareBasket(db, orderList, chains)
 }

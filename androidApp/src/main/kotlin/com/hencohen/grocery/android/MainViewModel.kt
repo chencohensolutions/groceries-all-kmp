@@ -161,6 +161,9 @@ class MainViewModel(
 
     fun hasLocationPermission() = finder.hasPermission()
 
+    /** Product photo from the chains' shopping sites (cached); null if none found. */
+    suspend fun imageUrl(barcode: String): String? = core.productImages.imageUrl(barcode)
+
     fun dismissNotice() {
         notice.value = null
     }

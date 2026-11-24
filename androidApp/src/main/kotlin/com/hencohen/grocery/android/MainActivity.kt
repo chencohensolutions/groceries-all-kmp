@@ -8,6 +8,16 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -76,8 +86,34 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             MaterialTheme {
-                MainScreen(viewModel(factory = MainViewModel.Factory))
+                val vm: MainViewModel = viewModel(factory = MainViewModel.Factory)
+                CompositionLocalProvider(LocalViewModel provides vm) {
+                    MainScreen(vm)
+                }
             }
+        }
+    }
+}
+
+private val LocalViewModel = staticCompositionLocalOf<MainViewModel> { error("no MainViewModel") }
+
+/** Product photo, resolved lazily by barcode; a neutral placeholder while loading or when none exists. */
+@Composable
+private fun ProductThumb(barcode: String, vm: MainViewModel, size: Int) {
+    val url by produceState<String?>(initialValue = null, barcode) { value = vm.imageUrl(barcode) }
+    Box(
+        Modifier.size(size.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (url == null) {
+            Text("🛒", style = MaterialTheme.typography.bodyLarge)
+        } else {
+            AsyncImage(
+                model = url,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize().background(Color.White),
+            )
         }
     }
 }
@@ -194,6 +230,8 @@ private fun ProductRow(
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            ProductThumb(product.barcode, vm = LocalViewModel.current, size = 56)
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(product.name, style = MaterialTheme.typography.bodyLarge)
                 product.manufacturer?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -536,6 +574,8 @@ private fun ChainTotalCard(total: ChainTotal, isBest: Boolean) {
 @Composable
 private fun OrderRow(line: OrderLine, onMinus: () -> Unit, onPlus: () -> Unit, onRemove: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        ProductThumb(line.barcode, vm = LocalViewModel.current, size = 40)
+        Spacer(Modifier.width(8.dp))
         Text(line.displayName, modifier = Modifier.weight(1f))
         OutlinedButton(onClick = onMinus) { Text("−") }
         Text(
