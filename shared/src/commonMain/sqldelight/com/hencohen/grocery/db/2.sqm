@@ -1,0 +1,5 @@
+CREATE TABLE product_image (
+    barcode TEXT NOT NULL PRIMARY KEY,
+    url TEXT,
+    checked_at INTEGER NOT NULL
+);
