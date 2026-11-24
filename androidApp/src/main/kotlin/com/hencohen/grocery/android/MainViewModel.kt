@@ -70,6 +70,14 @@ class MainViewModel(
         viewModelScope.launch { core.orderList.add(product.barcode, product.name) }
     }
 
+    /** Minus on a search result; dropping to zero removes the item from the list. */
+    fun decrement(product: ProductPrices) {
+        val current = order.value.firstOrNull { it.barcode == product.barcode } ?: return
+        viewModelScope.launch {
+            core.orderList.setQuantity(product.barcode, product.name, current.quantity - 1)
+        }
+    }
+
     fun setQuantity(line: OrderLine, quantity: Double) {
         viewModelScope.launch { core.orderList.setQuantity(line.barcode, line.displayName, quantity) }
     }

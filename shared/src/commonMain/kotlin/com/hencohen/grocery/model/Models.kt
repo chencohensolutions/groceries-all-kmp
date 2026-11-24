@@ -85,4 +85,15 @@ data class BasketComparison(
     /** Cheapest chain among those that have every item; null if none has them all. */
     val cheapestComplete: Chain?
         get() = totals.filter { it.missing.isEmpty() }.minByOrNull { it.total }?.chain
+
+    /**
+     * How much the cheapest complete basket saves versus the most expensive complete one.
+     * Null when fewer than two chains carry every item, since the totals wouldn't be comparable.
+     */
+    val savings: Agorot?
+        get() {
+            val complete = totals.filter { it.missing.isEmpty() }
+            if (complete.size < 2) return null
+            return complete.maxOf { it.total } - complete.minOf { it.total }
+        }
 }

@@ -73,5 +73,18 @@ class ListingAndBasketTest {
         assertEquals(listOf("333"), carrefour.missing.map { it.barcode })
 
         assertEquals(Chain.SHUFERSAL, result.cheapestComplete, "only chain with every item")
+        assertEquals(null, result.savings, "one complete basket: nothing to compare")
+    }
+
+    @Test
+    fun savingsBetweenCompleteBaskets() {
+        val lines = listOf(OrderLine("111", "חלב", 1.0))
+        val prices = mapOf(
+            Chain.SHUFERSAL to mapOf("111" to 710L),
+            Chain.CARREFOUR to mapOf("111" to 650L),
+        )
+        val result = compareBasket(lines, prices, emptyMap(), listOf(Chain.SHUFERSAL, Chain.CARREFOUR))
+        assertEquals(Chain.CARREFOUR, result.cheapestComplete)
+        assertEquals(60L, result.savings)
     }
 }

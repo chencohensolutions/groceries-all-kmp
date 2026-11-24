@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,7 +12,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -38,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -66,6 +71,7 @@ private fun MainScreen(vm: MainViewModel) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val sync by vm.sync.collectAsStateWithLifecycle()
     val order by vm.order.collectAsStateWithLifecycle()
+    val comparison by vm.comparison.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -77,6 +83,12 @@ private fun MainScreen(vm: MainViewModel) {
                     }
                 },
             )
+        },
+        bottomBar = {
+            // Pinned on both tabs so the totals update live while adding items from search.
+            if (order.isNotEmpty() && comparison.totals.isNotEmpty()) {
+                SavingsBar(comparison, onClick = { tab = 1 })
+            }
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
@@ -100,6 +112,8 @@ private fun MainScreen(vm: MainViewModel) {
 private fun SearchTab(vm: MainViewModel) {
     val query by vm.query.collectAsStateWithLifecycle()
     val results by vm.results.collectAsStateWithLifecycle()
+    val order by vm.order.collectAsStateWithLifecycle()
+    val quantities = order.associate { it.barcode to it.quantity }
 
     Column(Modifier.fillMaxSize()) {
         OutlinedTextField(
@@ -111,7 +125,13 @@ private fun SearchTab(vm: MainViewModel) {
         )
         LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
             items(results, key = { it.barcode }) { product ->
-                ProductRow(product, vm.chains, onAdd = { vm.add(product) })
+                ProductRow(
+                    product = product,
+                    chains = vm.chains,
+                    quantity = quantities[product.barcode],
+                    onAdd = { vm.add(product) },
+                    onMinus = { vm.decrement(product) },
+                )
                 HorizontalDivider()
             }
         }
@@ -119,7 +139,13 @@ private fun SearchTab(vm: MainViewModel) {
 }
 
 @Composable
-private fun ProductRow(product: ProductPrices, chains: List<Chain>, onAdd: () -> Unit) {
+private fun ProductRow(
+    product: ProductPrices,
+    chains: List<Chain>,
+    quantity: Double?,
+    onAdd: () -> Unit,
+    onMinus: () -> Unit,
+) {
     val cheapest = product.prices.values.minOrNull()
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
@@ -139,7 +165,68 @@ private fun ProductRow(product: ProductPrices, chains: List<Chain>, onAdd: () ->
                 }
             }
         }
-        Button(onClick = onAdd) { Text("הוסף") }
+        // "Add" turns into a − n + stepper once the item is on the list, so it's always
+        // visible what's already been added without opening the list.
+        if (quantity == null) {
+            Button(onClick = onAdd) { Text("הוסף") }
+        } else {
+            QuantityStepper(quantity, onMinus = onMinus, onPlus = onAdd)
+        }
+    }
+}
+
+@Composable
+private fun QuantityStepper(quantity: Double, onMinus: () -> Unit, onPlus: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(onClick = onMinus, contentPadding = PaddingValues(0.dp), modifier = Modifier.size(40.dp)) {
+            Text("−")
+        }
+        Text(
+            formatQuantity(quantity),
+            textAlign = TextAlign.Center,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.width(36.dp),
+        )
+        Button(onClick = onPlus, contentPadding = PaddingValues(0.dp), modifier = Modifier.size(40.dp)) {
+            Text("+")
+        }
+    }
+}
+
+private fun formatQuantity(q: Double): String =
+    if (q % 1.0 == 0.0) q.toInt().toString() else q.toString()
+
+@Composable
+private fun SavingsBar(comparison: BasketComparison, onClick: () -> Unit) {
+    val best = comparison.cheapestComplete
+    val bestTotal = comparison.totals.firstOrNull { it.chain == best }
+    val savings = comparison.savings
+    Surface(
+        color = MaterialTheme.colorScheme.primaryContainer,
+        tonalElevation = 3.dp,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+    ) {
+        Row(
+            Modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                if (best != null && bestTotal != null) {
+                    Text("הכי זול: ${best.displayName}", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        if (savings != null && savings > 0) "חוסך ${savings.formatShekels()} מול היקר ביותר"
+                        else "כל המוצרים זמינים",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
+                    Text("אין רשת עם כל המוצרים", style = MaterialTheme.typography.titleMedium)
+                    Text("הקש לפרטים – מה חסר בכל רשת", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            bestTotal?.let {
+                Text(it.total.formatShekels(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            }
+        }
     }
 }
 
@@ -217,7 +304,7 @@ private fun OrderRow(line: OrderLine, onMinus: () -> Unit, onPlus: () -> Unit, o
         Text(line.displayName, modifier = Modifier.weight(1f))
         OutlinedButton(onClick = onMinus) { Text("−") }
         Text(
-            line.quantity.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() },
+            formatQuantity(line.quantity),
             modifier = Modifier.width(36.dp).padding(horizontal = 8.dp),
         )
         OutlinedButton(onClick = onPlus) { Text("+") }
