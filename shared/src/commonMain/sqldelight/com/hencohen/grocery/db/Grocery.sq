@@ -10,10 +10,14 @@ CREATE TABLE product (
     unit_of_measure TEXT,
     unit_price INTEGER,               -- agorot per unit of measure
     is_weighted INTEGER NOT NULL DEFAULT 0,
+    search_name TEXT NOT NULL DEFAULT '',  -- HebrewSearch.searchName(name)
+    match_key TEXT NOT NULL DEFAULT '',    -- HebrewSearch.matchKey(): barcode, or "n:<name>" for internal codes
     PRIMARY KEY (chain, barcode)
 );
 
 CREATE INDEX product_barcode ON product(barcode);
+
+CREATE INDEX product_match_key ON product(match_key);
 
 CREATE TABLE chain_store (
     chain TEXT NOT NULL PRIMARY KEY,
@@ -54,21 +58,23 @@ deleteChainProducts:
 DELETE FROM product WHERE chain = ?;
 
 insertProduct:
-INSERT OR REPLACE INTO product(chain, barcode, name, manufacturer, price, unit_qty, quantity, unit_of_measure, unit_price, is_weighted)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO product(chain, barcode, name, manufacturer, price, unit_qty, quantity, unit_of_measure, unit_price, is_weighted, search_name, match_key)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
-searchProducts:
-SELECT chain, barcode, name, manufacturer, price
+-- Candidates for one query word (word-start match); remaining words are checked in Kotlin.
+searchCandidates:
+SELECT chain, barcode, match_key, name, manufacturer, price, search_name
 FROM product
-WHERE barcode IN (
-    SELECT DISTINCT barcode FROM product
-    WHERE name LIKE '%' || :query || '%' OR barcode = :query
-    LIMIT :limit
-)
-ORDER BY name;
+WHERE search_name LIKE '% ' || :term || '%' OR barcode = :raw
+LIMIT :limit;
 
+-- Every chain's rows for the matched products, so each result shows all chains' prices.
+rowsForMatchKeys:
+SELECT chain, barcode, match_key, name, manufacturer, price FROM product WHERE match_key IN ?;
+
+-- Cheapest row per chain for each order line (internal-code produce can have several per chain).
 pricesForBarcodes:
-SELECT chain, barcode, price FROM product WHERE barcode IN ?;
+SELECT chain, match_key, MIN(price) AS price FROM product WHERE match_key IN ? GROUP BY chain, match_key;
 
 productCounts:
 SELECT chain, COUNT(*) AS item_count FROM product GROUP BY chain;

@@ -38,7 +38,7 @@ class CompareBasket(
         val activeChains = chains.filter { it.key !in disabled }
         val prices = if (lines.isEmpty()) emptyMap() else {
             q.pricesForBarcodes(lines.map { it.barcode }).executeAsList()
-                .mapNotNull { row -> chains.byKey(row.chain)?.let { Triple(it, row.barcode, row.price) } }
+                .mapNotNull { row -> chains.byKey(row.chain)?.let { Triple(it, row.match_key, row.price ?: 0L) } }
                 .groupBy({ it.first }, { it.second to it.third })
                 .mapValues { (_, pairs) -> pairs.toMap() }
         }

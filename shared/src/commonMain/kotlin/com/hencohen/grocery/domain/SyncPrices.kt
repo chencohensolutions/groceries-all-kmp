@@ -3,6 +3,7 @@ package com.hencohen.grocery.domain
 import com.hencohen.grocery.data.StoreDirectory
 import com.hencohen.grocery.db.GroceryDatabase
 import com.hencohen.grocery.model.Chain
+import com.hencohen.grocery.parse.HebrewSearch
 import com.hencohen.grocery.parse.XmlPullParser
 import com.hencohen.grocery.parse.readRecords
 import com.hencohen.grocery.parse.toRawItem
@@ -87,6 +88,8 @@ class SyncPrices(
                     unit_of_measure = item.unitOfMeasure,
                     unit_price = item.unitPrice,
                     is_weighted = if (item.isWeighted) 1L else 0L,
+                    search_name = HebrewSearch.searchName(item.name),
+                    match_key = HebrewSearch.matchKey(item.barcode, item.name),
                 )
                 count++
             }

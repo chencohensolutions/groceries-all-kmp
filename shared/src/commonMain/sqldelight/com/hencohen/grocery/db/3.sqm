@@ -1,0 +1,7 @@
+ALTER TABLE product ADD COLUMN search_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE product ADD COLUMN match_key TEXT NOT NULL DEFAULT '';
+CREATE INDEX product_match_key ON product(match_key);
+-- Usable until the next sync rebuilds the normalised columns.
+UPDATE product SET search_name = ' ' || name || ' ', match_key = barcode;
+-- Force the next sync to re-import every chain so the new columns get filled properly.
+DELETE FROM sync_state;
