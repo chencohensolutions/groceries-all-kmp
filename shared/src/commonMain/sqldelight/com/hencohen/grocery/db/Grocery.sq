@@ -71,6 +71,9 @@ SELECT chain, COUNT(*) AS item_count FROM product GROUP BY chain;
 selectStore:
 SELECT * FROM chain_store WHERE chain = ?;
 
+selectStores:
+SELECT * FROM chain_store;
+
 upsertStore:
 INSERT OR REPLACE INTO chain_store(chain, store_id, store_name) VALUES (?, ?, ?);
 

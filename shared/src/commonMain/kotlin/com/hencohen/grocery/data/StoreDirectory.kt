@@ -10,7 +10,11 @@ import com.hencohen.grocery.source.FileKind
 import com.hencohen.grocery.source.PriceSource
 import com.hencohen.grocery.source.ShufersalSource
 import com.hencohen.grocery.source.latest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.withContext
 
+/** The chain publishes no store marked as online, so the user has to pick the branch that delivers to them. */
 class StoreNotFoundException(val chain: Chain, val candidates: List<StoreInfo>) :
     Exception("No online store found for ${chain.key} among ${candidates.size} stores")
 
@@ -44,6 +48,15 @@ class StoreDirectory(
 
     fun setStore(chain: Chain, storeId: String, storeName: String?) {
         queries.upsertStore(chain.key, storeId, storeName)
+    }
+
+    /** The chain's stores for a picker: online stores first, then by city and name. */
+    suspend fun storesForPicker(chain: Chain): List<StoreInfo> = withContext(Dispatchers.IO) {
+        listStores(chain)
+            .distinctBy { it.storeId }
+            .sortedWith(
+                compareBy<StoreInfo>({ pickOnlineStore(listOf(it)) == null }, { it.city.orEmpty() }, { it.name }),
+            )
     }
 
     /** Downloads and parses the chain's latest Stores file. */

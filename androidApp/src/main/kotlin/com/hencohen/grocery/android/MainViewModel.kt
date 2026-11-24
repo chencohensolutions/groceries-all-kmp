@@ -14,6 +14,8 @@ import com.hencohen.grocery.model.BasketComparison
 import com.hencohen.grocery.model.Chain
 import com.hencohen.grocery.model.OrderLine
 import com.hencohen.grocery.model.ProductPrices
+import com.hencohen.grocery.model.StoreInfo
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +27,13 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+data class StorePickerUi(
+    val chain: Chain,
+    val loading: Boolean = true,
+    val stores: List<StoreInfo> = emptyList(),
+    val error: String? = null,
+)
 
 data class SyncUi(
     val running: Boolean = false,
@@ -97,6 +106,35 @@ class MainViewModel(
 
     fun setQuantity(line: OrderLine, quantity: Double) {
         viewModelScope.launch { core.orderList.setQuantity(line.barcode, line.displayName, quantity) }
+    }
+
+    val storePicker = MutableStateFlow<StorePickerUi?>(null)
+
+    /** Downloads the chain's store list so the user can pick the branch that delivers to them. */
+    fun openStorePicker(chain: Chain) {
+        storePicker.value = StorePickerUi(chain)
+        viewModelScope.launch {
+            storePicker.value = try {
+                StorePickerUi(chain, loading = false, stores = core.stores.storesForPicker(chain))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                StorePickerUi(chain, loading = false, error = e.message ?: e::class.simpleName)
+            }
+        }
+    }
+
+    fun closeStorePicker() {
+        storePicker.value = null
+    }
+
+    fun pickStore(store: StoreInfo) {
+        storePicker.value = null
+        viewModelScope.launch {
+            core.stores.setStore(store.chain, store.storeId, store.name)
+            // Only chains whose newest file changed re-download; this one now points at a new store.
+            PriceSyncWorker.runNow(app, force = false)
+        }
     }
 
     fun setEnabled(chain: Chain, enabled: Boolean) {

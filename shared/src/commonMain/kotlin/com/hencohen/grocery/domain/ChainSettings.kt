@@ -19,6 +19,9 @@ data class ChainStatus(
     /** Epoch millis of the last successful import, null if never synced. */
     val syncedAt: Long?,
     val itemCount: Long?,
+    /** The store whose prices are used, once chosen or auto-detected. */
+    val storeId: String?,
+    val storeName: String?,
 )
 
 /** Per-chain on/off switch, delivery fee / minimum order, and last-sync info. */
@@ -31,16 +34,20 @@ class ChainSettings(
     fun observe(): Flow<List<ChainStatus>> = combine(
         q.selectSettings().asFlow().mapToList(Dispatchers.IO),
         q.selectSyncStates().asFlow().mapToList(Dispatchers.IO),
-    ) { settings, syncs ->
+        q.selectStores().asFlow().mapToList(Dispatchers.IO),
+    ) { settings, syncs, stores ->
         chains.map { chain ->
             val s = settings.firstOrNull { it.chain == chain.key }
             val sync = syncs.firstOrNull { it.chain == chain.key }
+            val store = stores.firstOrNull { it.chain == chain.key }
             ChainStatus(
                 chain = chain,
                 enabled = s?.enabled != 0L,
                 fees = ChainFees(s?.delivery_fee ?: 0L, s?.min_order ?: 0L),
                 syncedAt = sync?.synced_at,
                 itemCount = sync?.item_count,
+                storeId = store?.store_id,
+                storeName = store?.store_name,
             )
         }
     }

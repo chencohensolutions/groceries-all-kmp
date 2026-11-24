@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -57,6 +59,7 @@ import com.hencohen.grocery.model.Chain
 import com.hencohen.grocery.model.ChainTotal
 import com.hencohen.grocery.model.OrderLine
 import com.hencohen.grocery.model.ProductPrices
+import com.hencohen.grocery.model.StoreInfo
 import com.hencohen.grocery.model.formatShekels
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -218,6 +221,9 @@ private fun ChainsTab(vm: MainViewModel) {
     val sync by vm.sync.collectAsStateWithLifecycle()
     val dateFormat = remember { SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()) }
 
+    val picker by vm.storePicker.collectAsStateWithLifecycle()
+    picker?.let { StorePickerDialog(it, onPick = vm::pickStore, onDismiss = vm::closeStorePicker) }
+
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             Text(
@@ -232,6 +238,7 @@ private fun ChainsTab(vm: MainViewModel) {
                 syncedText = status.syncedAt?.let { "עודכן ${dateFormat.format(Date(it))} · ${status.itemCount} מוצרים" }
                     ?: "טרם סונכרן",
                 onEnabled = { vm.setEnabled(status.chain, it) },
+                onPickStore = { vm.openStorePicker(status.chain) },
                 onFees = { fee, min -> vm.setFees(status.chain, fee, min) },
             )
         }
@@ -244,6 +251,7 @@ private fun ChainCard(
     lastResult: String?,
     syncedText: String,
     onEnabled: (Boolean) -> Unit,
+    onPickStore: () -> Unit,
     onFees: (Long, Long) -> Unit,
 ) {
     var fee by remember(status.chain.key) { mutableStateOf(shekelsText(status.fees.deliveryFee)) }
@@ -262,6 +270,16 @@ private fun ChainCard(
                 Switch(checked = status.enabled, onCheckedChange = onEnabled)
             }
             if (status.enabled) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "סניף: " + (status.storeName ?: status.storeId ?: "לא נבחר"),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onPickStore) {
+                        Text(if (status.storeId == null) "בחר סניף" else "שנה סניף")
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = fee,
@@ -283,6 +301,54 @@ private fun ChainCard(
             }
         }
     }
+}
+
+@Composable
+private fun StorePickerDialog(state: StorePickerUi, onPick: (StoreInfo) -> Unit, onDismiss: () -> Unit) {
+    var filter by remember(state.chain.key) { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("סגור") } },
+        title = { Text("סניף ${state.chain.displayName}") },
+        text = {
+            Column {
+                when {
+                    state.loading -> {
+                        Text("טוען רשימת סניפים…")
+                        LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
+                    }
+                    state.error != null -> Text("שגיאה: ${state.error}", color = MaterialTheme.colorScheme.error)
+                    else -> {
+                        Text(
+                            "בחרו את הסניף שמשלוח אליכם יוצא ממנו (לרוב הקרוב לבית). חנויות אונליין מופיעות ראשונות.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        OutlinedTextField(
+                            value = filter,
+                            onValueChange = { filter = it },
+                            label = { Text("חיפוש עיר או סניף") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        )
+                        val shown = state.stores.filter {
+                            filter.isBlank() || it.name.contains(filter.trim(), true) || it.city.orEmpty().contains(filter.trim(), true)
+                        }
+                        LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                            items(shown, key = { it.storeId }) { store ->
+                                Column(
+                                    Modifier.fillMaxWidth().clickable { onPick(store) }.padding(vertical = 10.dp),
+                                ) {
+                                    Text(store.name, style = MaterialTheme.typography.bodyLarge)
+                                    store.city?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                                }
+                                HorizontalDivider()
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    )
 }
 
 private fun shekelsText(agorot: Long): String =

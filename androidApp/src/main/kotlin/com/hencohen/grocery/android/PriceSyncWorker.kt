@@ -11,6 +11,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.hencohen.grocery.data.StoreNotFoundException
 import com.hencohen.grocery.domain.ChainSyncResult
 import java.util.concurrent.TimeUnit
 
@@ -71,7 +72,10 @@ class PriceSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
         private fun ChainSyncResult.describe(): String = when (this) {
             is ChainSyncResult.Updated -> "עודכנו $itemCount מוצרים"
             is ChainSyncResult.UpToDate -> "המחירים עדכניים"
-            is ChainSyncResult.Failed -> "שגיאה: ${(error.message ?: error::class.simpleName).orEmpty().take(200)}"
+            is ChainSyncResult.Failed -> when (error) {
+                is StoreNotFoundException -> "שגיאה: לרשת אין חנות אונליין בקבצי המחירים – בחרו את הסניף שמשלוח אליכם"
+                else -> "שגיאה: ${(error.message ?: error::class.simpleName).orEmpty().take(200)}"
+            }
         }
     }
 }
