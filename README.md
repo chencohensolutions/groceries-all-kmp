@@ -12,10 +12,24 @@ chain's newest `PriceFull` file for its online store, parses it, and stores it i
 
 ## Chains
 
-| Chain | Portal | Store used | Status |
+Chains with an online store, grouped by the portal they publish on. The online store is picked
+automatically from each chain's Stores file (name contains "online" / "אונליין" / "אינטרנט" / "Wolt"),
+and can be turned off per chain in the **רשתות** tab.
+
+| Chain | Portal | Source class | Status |
 |---|---|---|---|
-| Shufersal | prices.shufersal.co.il | 413 (שופרסל ONLINE) | Listing format checked against the live site |
-| Carrefour | prices.carrefour.co.il | auto-detected from the Stores file (name contains "online"/"אונליין") | **Unverified** — portal only answers Israeli IPs |
+| שופרסל | prices.shufersal.co.il | `ShufersalSource` (store 413) | Listing checked against the live site |
+| קרפור | prices.carrefour.co.il | `PublishPriceSource` | Format from the maintained reference scraper |
+| רמי לוי, יוחננוף, אושר עד, טיב טעם, קשת טעמים | url.publishedprices.co.il (Cerberus) | `CerberusSource` | Web login flow — **verify live** |
+| ויקטורי, מחסני השוק | laibcatalog.co.il API | `LaibcatalogSource` | Format from the reference scraper |
+| חצי חינם | shop.hazi-hinam.co.il/Prices | `HaziHinamSource` | Format from the reference scraper |
+| קינג סטור | kingstore.binaprojects.com (HTTP) | `BinaSource` | Format from the reference scraper |
+| וולט מרקט | wm-gateway.wolt.com daily index | `WoltSource` | Format from the reference scraper |
+
+Not added: Quik (now part of Carrefour; its portal is deprecated in the reference scraper), and
+chains without an online store or that aren't groceries (Super-Pharm, Good Pharm, Yellow, Dor Alon…).
+Most portals only answer Israeli IPs. Portal formats are based on
+[il-supermarket-scraper](https://github.com/OpenIsraeliSupermarkets/israeli-supermarket-scarpers).
 
 ### Adding a chain
 
@@ -55,16 +69,16 @@ androidApp/    GroceryApp, PriceSyncWorker, MainViewModel, MainActivity (Compose
 
 Run these from a phone or computer in Israel; Carrefour's portal blocks foreign IPs.
 
-1. `./gradlew :shared:allTests` passes. The Carrefour listing test uses a **guessed** page shape.
-2. Open `https://prices.carrefour.co.il/` and look at the page source. Fix
-   `CarrefourSource.parseListing` to match the real HTML, and update `ListingAndBasketTest.carrefourListingResolvesAgainstPath` with a real snippet.
-3. Check Shufersal's `catID` values in `ShufersalSource.catId` (2 = PricesFull, 5 = Stores) against the portal's filter dropdown.
-4. Run the app and tap **עדכון מחירים**. The summary under the top bar shows per-chain results or errors.
+1. CI runs `:shared:testDebugUnitTest` and builds the APK on every push.
+2. Run the app and tap **עדכון מחירים**. The **רשתות** tab shows, per chain, when it last synced and any error.
+3. If a chain fails, its portal format probably differs from the test fixtures in `PortalSourcesTest` —
+   fix that source's `parseListing`, or turn the chain off.
+4. The first full sync downloads roughly 5–15 MB per chain; later syncs skip chains whose file hasn't changed.
 
 ## Next milestones
 
 - Promotions (`PromoFull`): a "has promo" badge first, then promo-price calculation
-- Delivery fee / minimum order settings screen (the DB table and `CompareBasket.setFees` already exist)
 - Barcode scanner (ML Kit)
-- Manual store picker when auto-detection fails (`StoreNotFoundException.candidates`)
+- Manual store picker when auto-detection fails or a chain has several online stores (`StoreNotFoundException.candidates`)
+- Cerberus over FTP as a fallback if the web login changes
 - iOS app (SwiftUI + BGTaskScheduler, SKIE for flows)

@@ -31,7 +31,8 @@ CREATE TABLE sync_state (
 CREATE TABLE chain_settings (
     chain TEXT NOT NULL PRIMARY KEY,
     delivery_fee INTEGER NOT NULL DEFAULT 0,   -- agorot
-    min_order INTEGER NOT NULL DEFAULT 0       -- agorot
+    min_order INTEGER NOT NULL DEFAULT 0,      -- agorot
+    enabled INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE order_item (
@@ -89,8 +90,14 @@ INSERT OR REPLACE INTO sync_state(chain, file_name, synced_at, item_count) VALUE
 selectSettings:
 SELECT * FROM chain_settings;
 
-upsertSettings:
-INSERT OR REPLACE INTO chain_settings(chain, delivery_fee, min_order) VALUES (?, ?, ?);
+ensureSettings:
+INSERT OR IGNORE INTO chain_settings(chain) VALUES (?);
+
+updateFees:
+UPDATE chain_settings SET delivery_fee = ?, min_order = ? WHERE chain = ?;
+
+updateEnabled:
+UPDATE chain_settings SET enabled = ? WHERE chain = ?;
 
 -- order list ------------------------------------------------------------
 

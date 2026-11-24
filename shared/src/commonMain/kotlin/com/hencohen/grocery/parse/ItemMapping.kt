@@ -40,22 +40,22 @@ fun Map<String, String>.toRawItem(chain: Chain): RawItem? {
     return RawItem(
         barcode = productKey(chain, code, firstOf("itemtype")),
         name = firstOf("itemname", "itemnm") ?: code,
-        manufacturer = firstOf("manufacturername", "manufacturename"),
+        manufacturer = firstOf("manufacturername", "manufacturename", "manufacturer"),
         price = price,
         unitQty = firstOf("unitqty"),
         quantity = firstOf("quantity"),
-        unitOfMeasure = firstOf("unitofmeasure"),
+        unitOfMeasure = firstOf("unitofmeasure", "unitmeasure"),
         unitPrice = parseAgorot(firstOf("unitofmeasureprice")),
         isWeighted = firstOf("bisweighted").let { it == "1" || it.equals("true", ignoreCase = true) },
     )
 }
 
 fun Map<String, String>.toStoreInfo(chain: Chain): StoreInfo? {
-    val id = firstOf("storeid") ?: return null
+    val id = firstOf("storeid", "branchid", "storenumber") ?: return null
     return StoreInfo(
         chain = chain,
         storeId = normalizeStoreId(id),
-        name = firstOf("storename") ?: id,
+        name = firstOf("storename", "branchname") ?: id,
         city = firstOf("city"),
     )
 }

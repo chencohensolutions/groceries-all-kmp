@@ -21,9 +21,9 @@ class FileDownloader(
     private val fileSystem: FileSystem = FileSystem.SYSTEM,
     private val tempDir: Path = FileSystem.SYSTEM_TEMPORARY_DIRECTORY,
 ) {
-    suspend fun download(file: PortalFile): Path {
+    suspend fun download(file: PortalFile, url: String = file.url): Path {
         val target = tempDir / "grocery-${file.name}.download"
-        http.prepareGet(file.url).execute { response ->
+        http.prepareGet(url).execute { response ->
             check(response.status.isSuccess()) { "HTTP ${response.status.value} for ${file.name}" }
             val channel = response.bodyAsChannel()
             fileSystem.sink(target).buffer().use { sink ->
@@ -56,7 +56,16 @@ class FileDownloader(
                 raw.close()
                 error("ZIP-wrapped price files aren't supported yet: $path")
             }
-            else -> raw
+            else -> {
+                // Portals that lost the session answer with an HTML page instead of the file.
+                val head = raw.peek().let { if (it.request(64)) it.readUtf8(64) else it.readUtf8() }
+                    .trimStart('\uFEFF', ' ', '\n', '\r', '\t').lowercase()
+                if (head.startsWith("<!doctype html") || head.startsWith("<html")) {
+                    raw.close()
+                    error("Got an HTML page instead of a price file: $path")
+                }
+                raw
+            }
         }
     }
 }

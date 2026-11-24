@@ -35,7 +35,9 @@ class StoreDirectory(
         }
 
         val stores = listStores(chain)
-        val online = pickOnlineStore(stores) ?: throw StoreNotFoundException(chain, stores)
+        val online = pickOnlineStore(stores)
+            ?: stores.firstOrNull()?.takeIf { chain.allStoresOnline }
+            ?: throw StoreNotFoundException(chain, stores)
         setStore(chain, online.storeId, online.name)
         return online.storeId
     }
@@ -48,11 +50,11 @@ class StoreDirectory(
     suspend fun listStores(chain: Chain): List<StoreInfo> {
         val source = sources.first { it.chain == chain }
         val file = source.latest(FileKind.STORES) ?: error("No Stores file listed for ${chain.key}")
-        val path = downloader.download(file)
+        val path = downloader.download(file, source.downloadUrl(file))
         try {
             return downloader.parse(path) { parser ->
                 val stores = mutableListOf<StoreInfo>()
-                parser.readRecords("Store") { record -> record.toStoreInfo(chain)?.let(stores::add) }
+                parser.readRecords("Store", "Branch") { record -> record.toStoreInfo(chain)?.let(stores::add) }
                 stores
             }
         } finally {
@@ -63,8 +65,8 @@ class StoreDirectory(
     companion object {
         val KNOWN_ONLINE_STORES = mapOf(Chain.SHUFERSAL to ShufersalSource.ONLINE_STORE_ID)
 
-        private val strongKeywords = listOf("online", "אונליין", "און ליין", "on line")
-        private val weakKeywords = listOf("אינטרנט", "משלוחים", "ecommerce", "e-commerce")
+        private val strongKeywords = listOf("online", "אונליין", "און ליין", "on line", "אינטרנט")
+        private val weakKeywords = listOf("משלוחים", "ecommerce", "e-commerce", "wolt", "delivery")
 
         fun pickOnlineStore(stores: List<StoreInfo>): StoreInfo? {
             fun matches(store: StoreInfo, words: List<String>) =

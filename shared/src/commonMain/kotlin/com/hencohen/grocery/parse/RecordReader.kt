@@ -1,13 +1,15 @@
 package com.hencohen.grocery.parse
 
 /**
- * Walks the document and calls [onRecord] for every element named [recordTag] (case-insensitive),
+ * Walks the document and calls [onRecord] for every element named one of [recordTags] (case-insensitive),
  * passing its direct leaf children as a map of lower-cased tag name → trimmed text.
  *
  * Works for `<Item>` in PriceFull files and `<Store>` / `<STORE>` in Stores files, whose
  * tag casing differs between chains.
  */
-fun XmlPullParser.readRecords(recordTag: String, onRecord: (Map<String, String>) -> Unit) {
+fun XmlPullParser.readRecords(vararg recordTags: String, onRecord: (Map<String, String>) -> Unit) {
+    fun isRecord(tag: String) = recordTags.any { it.equals(tag, ignoreCase = true) }
+
     var fields: HashMap<String, String>? = null
     var currentField: String? = null
     val text = StringBuilder()
@@ -16,7 +18,7 @@ fun XmlPullParser.readRecords(recordTag: String, onRecord: (Map<String, String>)
         when (next()) {
             XmlPullParser.Event.EOF -> return
             XmlPullParser.Event.START -> {
-                if (name.equals(recordTag, ignoreCase = true)) {
+                if (isRecord(name)) {
                     fields = HashMap()
                     currentField = null
                 } else if (fields != null) {
@@ -29,7 +31,7 @@ fun XmlPullParser.readRecords(recordTag: String, onRecord: (Map<String, String>)
             }
             XmlPullParser.Event.END -> {
                 val record = fields ?: continue
-                if (name.equals(recordTag, ignoreCase = true)) {
+                if (isRecord(name)) {
                     onRecord(record)
                     fields = null
                     currentField = null

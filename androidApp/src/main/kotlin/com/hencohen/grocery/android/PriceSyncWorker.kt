@@ -20,7 +20,15 @@ class PriceSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
     override suspend fun doWork(): Result {
         val core = (applicationContext as GroceryApp).core
         val results = core.syncPrices(force = inputData.getBoolean(KEY_FORCE, false))
-        val output = workDataOf(KEY_SUMMARY to results.joinToString("\n") { it.describe() })
+        val updated = results.count { it is ChainSyncResult.Updated }
+        val failed = results.count { it is ChainSyncResult.Failed }
+        val output = workDataOf(
+            KEY_SUMMARY to buildString {
+                append("עודכנו $updated רשתות")
+                if (failed > 0) append(" · $failed נכשלו (פרטים בלשונית רשתות)")
+            },
+            KEY_DETAILS to results.map { "${it.chain.key}\t${it.describe()}" }.toTypedArray(),
+        )
 
         val allFailed = results.isNotEmpty() && results.all { it is ChainSyncResult.Failed }
         return when {
@@ -35,6 +43,7 @@ class PriceSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
         const val MANUAL_WORK = "price-sync-now"
         const val KEY_FORCE = "force"
         const val KEY_SUMMARY = "summary"
+        const val KEY_DETAILS = "details"
         private const val MAX_RETRIES = 3
 
         fun schedulePeriodic(context: Context) {
@@ -60,9 +69,9 @@ class PriceSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
         }
 
         private fun ChainSyncResult.describe(): String = when (this) {
-            is ChainSyncResult.Updated -> "${chain.displayName}: עודכנו $itemCount מוצרים"
-            is ChainSyncResult.UpToDate -> "${chain.displayName}: המחירים עדכניים"
-            is ChainSyncResult.Failed -> "${chain.displayName}: שגיאה – ${error.message ?: error::class.simpleName}"
+            is ChainSyncResult.Updated -> "עודכנו $itemCount מוצרים"
+            is ChainSyncResult.UpToDate -> "המחירים עדכניים"
+            is ChainSyncResult.Failed -> "שגיאה: ${(error.message ?: error::class.simpleName).orEmpty().take(200)}"
         }
     }
 }

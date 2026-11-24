@@ -4,7 +4,7 @@ import com.hencohen.grocery.domain.ChainFees
 import com.hencohen.grocery.domain.compareBasket
 import com.hencohen.grocery.model.Chain
 import com.hencohen.grocery.model.OrderLine
-import com.hencohen.grocery.source.CarrefourSource
+import com.hencohen.grocery.source.PublishPriceSource
 import com.hencohen.grocery.source.ShufersalSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -30,18 +30,19 @@ class ListingAndBasketTest {
         assertTrue("sig=def&sp=r" in latest.url, "HTML entities decoded")
     }
 
-    /** UNVERIFIED shape — replace with a real page snippet on the first live run. */
+    /** Shape taken from the maintained il-supermarket-scraper's PublishPrice engine. */
     @Test
     fun carrefourListingResolvesAgainstPath() {
         val html = """
             <script>
-              const path = "/2026/11/24";
-              const files = [{"name":"PriceFull7290055700007-0090-202611240300.gz"},{"name":"Stores7290055700007-000-202611240200.xml"}];
+            const path = '20261124';
+            const files = [{"name":"PriceFull7290055700007-0090-202611240300.gz","size":12345,"modified":"03:00 24-11-2026"},{"name":"Stores7290055700007-000-202611240200.xml","size":99}];
             </script>
+            <script>other()</script>
         """.trimIndent()
-        val files = CarrefourSource.parseListing(html)
+        val files = PublishPriceSource.parseListing(html, Chain.CARREFOUR, "https://prices.carrefour.co.il/")
         assertEquals(2, files.size)
-        assertEquals("https://prices.carrefour.co.il/2026/11/24/PriceFull7290055700007-0090-202611240300.gz", files[0].url)
+        assertEquals("https://prices.carrefour.co.il/20261124/PriceFull7290055700007-0090-202611240300.gz", files[0].url)
         assertEquals("90", files[0].storeId)
     }
 

@@ -14,7 +14,6 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.withContext
 import kotlin.math.roundToLong
 
 data class ChainFees(val deliveryFee: Agorot = 0, val minOrder: Agorot = 0)
@@ -35,18 +34,16 @@ class CompareBasket(
         val fees = settings.mapNotNull { s ->
             chains.byKey(s.chain)?.let { it to ChainFees(s.delivery_fee, s.min_order) }
         }.toMap()
+        val disabled = settings.filter { it.enabled == 0L }.map { it.chain }.toSet()
+        val activeChains = chains.filter { it.key !in disabled }
         val prices = if (lines.isEmpty()) emptyMap() else {
             q.pricesForBarcodes(lines.map { it.barcode }).executeAsList()
                 .mapNotNull { row -> chains.byKey(row.chain)?.let { Triple(it, row.barcode, row.price) } }
                 .groupBy({ it.first }, { it.second to it.third })
                 .mapValues { (_, pairs) -> pairs.toMap() }
         }
-        compareBasket(lines, prices, fees, chains)
+        compareBasket(lines, prices, fees, activeChains)
     }.flowOn(Dispatchers.IO)
-
-    suspend fun setFees(chain: Chain, fees: ChainFees) {
-        withContext(Dispatchers.IO) { q.upsertSettings(chain.key, fees.deliveryFee, fees.minOrder) }
-    }
 }
 
 /** Pure basket math, kept separate so it's easy to test. */

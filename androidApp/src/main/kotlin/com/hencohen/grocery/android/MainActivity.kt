@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -29,6 +30,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -37,21 +39,29 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.hencohen.grocery.domain.ChainStatus
 import com.hencohen.grocery.model.BasketComparison
 import com.hencohen.grocery.model.Chain
 import com.hencohen.grocery.model.ChainTotal
 import com.hencohen.grocery.model.OrderLine
 import com.hencohen.grocery.model.ProductPrices
 import com.hencohen.grocery.model.formatShekels
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.math.roundToLong
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -99,10 +109,12 @@ private fun MainScreen(vm: MainViewModel) {
             TabRow(selectedTabIndex = tab) {
                 Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("חיפוש") })
                 Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("הרשימה שלי (${order.size})") })
+                Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("רשתות") })
             }
             when (tab) {
                 0 -> SearchTab(vm)
-                else -> OrderTab(vm)
+                1 -> OrderTab(vm)
+                else -> ChainsTab(vm)
             }
         }
     }
@@ -113,6 +125,7 @@ private fun SearchTab(vm: MainViewModel) {
     val query by vm.query.collectAsStateWithLifecycle()
     val results by vm.results.collectAsStateWithLifecycle()
     val order by vm.order.collectAsStateWithLifecycle()
+    val enabledChains by vm.enabledChains.collectAsStateWithLifecycle()
     val quantities = order.associate { it.barcode to it.quantity }
 
     Column(Modifier.fillMaxSize()) {
@@ -127,7 +140,7 @@ private fun SearchTab(vm: MainViewModel) {
             items(results, key = { it.barcode }) { product ->
                 ProductRow(
                     product = product,
-                    chains = vm.chains,
+                    chains = enabledChains,
                     quantity = quantities[product.barcode],
                     onAdd = { vm.add(product) },
                     onMinus = { vm.decrement(product) },
@@ -146,34 +159,137 @@ private fun ProductRow(
     onAdd: () -> Unit,
     onMinus: () -> Unit,
 ) {
-    val cheapest = product.prices.values.minOrNull()
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    // With a dozen chains a full price row won't fit, so show the cheapest and expand on tap.
+    var expanded by rememberSaveable(product.barcode) { mutableStateOf(false) }
+    val offers = chains.mapNotNull { chain -> product.prices[chain]?.let { chain to it } }.sortedBy { it.second }
+    val best = offers.firstOrNull()
+
+    Column(
+        Modifier.fillMaxWidth().clickable(enabled = offers.size > 1) { expanded = !expanded }
+            .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(product.name, style = MaterialTheme.typography.bodyLarge)
-            product.manufacturer?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                chains.forEach { chain ->
-                    val price = product.prices[chain]
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(product.name, style = MaterialTheme.typography.bodyLarge)
+                product.manufacturer?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                if (best == null) {
+                    Text("לא נמכר ברשתות הפעילות", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(best.second.formatShekels(), fontWeight = FontWeight.Bold)
+                        Text(best.first.displayName, style = MaterialTheme.typography.bodyMedium)
+                        if (offers.size > 1) {
+                            Text(
+                                if (expanded) "▲" else "+${offers.size - 1} רשתות ▼",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
+            }
+            // "Add" turns into a − n + stepper once the item is on the list, so it's always
+            // visible what's already been added without opening the list.
+            if (quantity == null) {
+                Button(onClick = onAdd) { Text("הוסף") }
+            } else {
+                QuantityStepper(quantity, onMinus = onMinus, onPlus = onAdd)
+            }
+        }
+        if (expanded) {
+            offers.drop(1).forEach { (chain, price) ->
+                Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    Text(chain.displayName, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Text(price.formatShekels(), style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        "${chain.displayName} ${price?.formatShekels() ?: "—"}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (price != null && price == cheapest && product.prices.size > 1) FontWeight.Bold else null,
+                        " (+${(price - best!!.second).formatShekels()})",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
                     )
                 }
             }
         }
-        // "Add" turns into a − n + stepper once the item is on the list, so it's always
-        // visible what's already been added without opening the list.
-        if (quantity == null) {
-            Button(onClick = onAdd) { Text("הוסף") }
-        } else {
-            QuantityStepper(quantity, onMinus = onMinus, onPlus = onAdd)
+    }
+}
+
+@Composable
+private fun ChainsTab(vm: MainViewModel) {
+    val statuses by vm.chainStatuses.collectAsStateWithLifecycle()
+    val sync by vm.sync.collectAsStateWithLifecycle()
+    val dateFormat = remember { SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()) }
+
+    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            Text(
+                "רשתות עם חנות אונליין. כבו רשתות שלא מעניינות אתכם – הן לא יסונכרנו ולא ייכללו בהשוואה.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        items(statuses, key = { it.chain.key }) { status ->
+            ChainCard(
+                status = status,
+                lastResult = sync.perChain[status.chain.key],
+                syncedText = status.syncedAt?.let { "עודכן ${dateFormat.format(Date(it))} · ${status.itemCount} מוצרים" }
+                    ?: "טרם סונכרן",
+                onEnabled = { vm.setEnabled(status.chain, it) },
+                onFees = { fee, min -> vm.setFees(status.chain, fee, min) },
+            )
         }
     }
 }
+
+@Composable
+private fun ChainCard(
+    status: ChainStatus,
+    lastResult: String?,
+    syncedText: String,
+    onEnabled: (Boolean) -> Unit,
+    onFees: (Long, Long) -> Unit,
+) {
+    var fee by remember(status.chain.key) { mutableStateOf(shekelsText(status.fees.deliveryFee)) }
+    var min by remember(status.chain.key) { mutableStateOf(shekelsText(status.fees.minOrder)) }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(status.chain.displayName, style = MaterialTheme.typography.titleMedium)
+                    Text(syncedText, style = MaterialTheme.typography.bodySmall)
+                    lastResult?.takeIf { it.startsWith("שגיאה") }?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                Switch(checked = status.enabled, onCheckedChange = onEnabled)
+            }
+            if (status.enabled) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = fee,
+                        onValueChange = { fee = it; onFees(parseShekels(it), parseShekels(min)) },
+                        label = { Text("דמי משלוח ₪") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = min,
+                        onValueChange = { min = it; onFees(parseShekels(fee), parseShekels(it)) },
+                        label = { Text("מינימום הזמנה ₪") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun shekelsText(agorot: Long): String =
+    if (agorot == 0L) "" else if (agorot % 100 == 0L) (agorot / 100).toString() else (agorot / 100.0).toString()
+
+private fun parseShekels(text: String): Long =
+    ((text.trim().replace(',', '.').toDoubleOrNull() ?: 0.0) * 100).roundToLong()
 
 @Composable
 private fun QuantityStepper(quantity: Double, onMinus: () -> Unit, onPlus: () -> Unit) {
@@ -257,8 +373,18 @@ private fun OrderTab(vm: MainViewModel) {
 private fun ComparisonCards(comparison: BasketComparison) {
     val best = comparison.cheapestComplete
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        comparison.totals.sortedBy { it.total }.forEach { total ->
+        // Complete baskets first (cheapest on top), then partial ones; chains with none of the
+        // items (not synced, or don't stock them) collapse into one line.
+        val (withItems, without) = comparison.totals.partition { it.subtotal > 0 }
+        withItems.sortedWith(compareBy({ it.missing.size }, { it.total })).forEach { total ->
             ChainTotalCard(total, isBest = total.chain == best)
+        }
+        if (without.isNotEmpty()) {
+            Text(
+                "ללא נתונים לרשימה: " + without.joinToString { it.chain.displayName },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
         }
     }
 }

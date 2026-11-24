@@ -5,10 +5,40 @@ package com.hencohen.grocery.model
  * code used in price-transparency file names. Not an enum, so new chains can be registered
  * without touching the rest of the code — see `GroceryCore.sources`.
  */
-data class Chain(val key: String, val chainId: String, val displayName: String) {
+data class Chain(
+    val key: String,
+    val chainId: String,
+    val displayName: String,
+    /** Some chains publish under more than one GS1 code (e.g. after mergers). */
+    val altChainIds: List<String> = emptyList(),
+    /** Every store is an online/delivery store (Wolt Market), so any store will do. */
+    val allStoresOnline: Boolean = false,
+) {
+    val allChainIds: List<String> get() = listOf(chainId) + altChainIds
+
     companion object {
+        // Chains with an online/delivery store, grouped by the portal platform they publish on.
         val SHUFERSAL = Chain("shufersal", "7290027600007", "שופרסל")
         val CARREFOUR = Chain("carrefour", "7290055700007", "קרפור")
+
+        // Cerberus (url.publishedprices.co.il)
+        val RAMI_LEVY = Chain("rami_levy", "7290058140886", "רמי לוי")
+        val TIV_TAAM = Chain("tiv_taam", "7290873255550", "טיב טעם")
+        val KESHET_TEAMIM = Chain("keshet_teamim", "7290785400000", "קשת טעמים")
+        val YOHANANOF = Chain("yohananof", "7290803800003", "יוחננוף")
+        val OSHER_AD = Chain("osher_ad", "7290103152017", "אושר עד")
+
+        // laibcatalog.co.il API
+        val VICTORY = Chain("victory", "7290696200003", "ויקטורי", altChainIds = listOf("7290058103393"))
+        val MAHSANEI_HASHUK =
+            Chain("mahsanei_hashuk", "7290661400001", "מחסני השוק", altChainIds = listOf("7290633800006"))
+
+        // Own portals
+        val HAZI_HINAM = Chain("hazi_hinam", "7290700100008", "חצי חינם")
+        val WOLT_MARKET = Chain("wolt_market", "7290058249350", "וולט מרקט", allStoresOnline = true)
+
+        // Bina (binaprojects.com)
+        val KING_STORE = Chain("king_store", "7290058108879", "קינג סטור")
     }
 }
 

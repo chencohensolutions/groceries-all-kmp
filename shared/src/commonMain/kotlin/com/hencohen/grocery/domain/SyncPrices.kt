@@ -29,6 +29,7 @@ sealed interface ChainSyncResult {
  */
 class SyncPrices(
     private val sources: List<PriceSource>,
+    private val settings: ChainSettings,
     private val downloader: FileDownloader,
     private val stores: StoreDirectory,
     private val db: GroceryDatabase,
@@ -36,7 +37,8 @@ class SyncPrices(
 ) {
     suspend operator fun invoke(force: Boolean = false): List<ChainSyncResult> =
         withContext(Dispatchers.IO) {
-            sources.map { source ->
+            val enabled = settings.enabledChains().toSet()
+            sources.filter { it.chain in enabled }.map { source ->
                 try {
                     syncChain(source, force)
                 } catch (e: CancellationException) {
@@ -56,7 +58,7 @@ class SyncPrices(
         val previous = db.groceryQueries.selectSyncState(chain.key).executeAsOneOrNull()
         if (!force && previous?.file_name == file.name) return ChainSyncResult.UpToDate(chain, file.name)
 
-        val path = downloader.download(file)
+        val path = downloader.download(file, source.downloadUrl(file))
         try {
             val count = downloader.parse(path) { parser -> importItems(chain, parser) }
             check(count > 0) { "${file.name} contained no items" }
@@ -72,7 +74,7 @@ class SyncPrices(
         val q = db.groceryQueries
         db.transaction {
             q.deleteChainProducts(chain.key)
-            parser.readRecords("Item") { record ->
+            parser.readRecords("Item", "Product") { record ->
                 val item = record.toRawItem(chain) ?: return@readRecords
                 q.insertProduct(
                     chain = chain.key,

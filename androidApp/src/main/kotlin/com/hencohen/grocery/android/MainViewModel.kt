@@ -9,6 +9,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.hencohen.grocery.GroceryCore
+import com.hencohen.grocery.domain.ChainStatus
 import com.hencohen.grocery.model.BasketComparison
 import com.hencohen.grocery.model.Chain
 import com.hencohen.grocery.model.OrderLine
@@ -25,7 +26,12 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-data class SyncUi(val running: Boolean = false, val message: String? = null)
+data class SyncUi(
+    val running: Boolean = false,
+    val message: String? = null,
+    /** Last sync result per chain key, e.g. "עודכנו 18,230 מוצרים" or "שגיאה: …". */
+    val perChain: Map<String, String> = emptyMap(),
+)
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class MainViewModel(
@@ -34,6 +40,14 @@ class MainViewModel(
 ) : ViewModel() {
 
     val chains: List<Chain> = core.chains
+
+    val chainStatuses: StateFlow<List<ChainStatus>> =
+        core.chainSettings.observe()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val enabledChains: StateFlow<List<Chain>> =
+        core.chainSettings.observeEnabled()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), core.chains)
 
     val query = MutableStateFlow("")
 
@@ -44,6 +58,9 @@ class MainViewModel(
                 SyncUi(
                     running = info.state == WorkInfo.State.RUNNING || info.state == WorkInfo.State.ENQUEUED,
                     message = info.outputData.getString(PriceSyncWorker.KEY_SUMMARY),
+                    perChain = info.outputData.getStringArray(PriceSyncWorker.KEY_DETAILS).orEmpty()
+                        .mapNotNull { line -> line.split('\t', limit = 2).takeIf { it.size == 2 } }
+                        .associate { (key, text) -> key to text },
                 )
             }
             .stateIn(viewModelScope, SharingStarted.Eagerly, SyncUi())
@@ -80,6 +97,14 @@ class MainViewModel(
 
     fun setQuantity(line: OrderLine, quantity: Double) {
         viewModelScope.launch { core.orderList.setQuantity(line.barcode, line.displayName, quantity) }
+    }
+
+    fun setEnabled(chain: Chain, enabled: Boolean) {
+        viewModelScope.launch { core.chainSettings.setEnabled(chain, enabled) }
+    }
+
+    fun setFees(chain: Chain, deliveryFee: Long, minOrder: Long) {
+        viewModelScope.launch { core.chainSettings.setFees(chain, deliveryFee, minOrder) }
     }
 
     fun remove(line: OrderLine) {
