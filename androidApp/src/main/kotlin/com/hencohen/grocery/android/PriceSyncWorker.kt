@@ -29,6 +29,10 @@ class PriceSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
                 if (failed > 0) append(" · $failed נכשלו (פרטים בלשונית רשתות)")
             },
             KEY_DETAILS to results.map { "${it.chain.key}\t${it.describe()}" }.toTypedArray(),
+            KEY_NEEDS_STORE to results
+                .filter { it is ChainSyncResult.Failed && it.error is StoreNotFoundException }
+                .map { it.chain.key }
+                .toTypedArray(),
         )
 
         val allFailed = results.isNotEmpty() && results.all { it is ChainSyncResult.Failed }
@@ -45,6 +49,8 @@ class PriceSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
         const val KEY_FORCE = "force"
         const val KEY_SUMMARY = "summary"
         const val KEY_DETAILS = "details"
+        /** Chains with no online store; the app picks the nearest branch for them. */
+        const val KEY_NEEDS_STORE = "needs_store"
         private const val MAX_RETRIES = 3
 
         fun schedulePeriodic(context: Context) {
@@ -73,7 +79,7 @@ class PriceSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
             is ChainSyncResult.Updated -> "עודכנו $itemCount מוצרים"
             is ChainSyncResult.UpToDate -> "המחירים עדכניים"
             is ChainSyncResult.Failed -> when (error) {
-                is StoreNotFoundException -> "שגיאה: לרשת אין חנות אונליין בקבצי המחירים – בחרו את הסניף שמשלוח אליכם"
+                is StoreNotFoundException -> "שגיאה: לרשת אין חנות אונליין – אפשרו מיקום לבחירת הסניף הקרוב, או בחרו סניף"
                 else -> "שגיאה: ${(error.message ?: error::class.simpleName).orEmpty().take(200)}"
             }
         }

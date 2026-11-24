@@ -110,6 +110,61 @@ class MainViewModel(
 
     val storePicker = MutableStateFlow<StorePickerUi?>(null)
 
+    /** One-off messages, e.g. which branch was picked automatically. */
+    val notice = MutableStateFlow<String?>(null)
+
+    private val finder = NearestStoreFinder(app)
+
+    /** Chains waiting for a nearest-branch pick (no online store, location not available yet). */
+    val needsNearest = MutableStateFlow<List<Chain>>(emptyList())
+
+    private val handledWork = mutableSetOf<java.util.UUID>()
+
+    init {
+        // After a sync, chains without an online store get the branch nearest to the phone.
+        viewModelScope.launch {
+            WorkManager.getInstance(app).getWorkInfosForUniqueWorkFlow(PriceSyncWorker.MANUAL_WORK).collect { infos ->
+                val info = infos.firstOrNull() ?: return@collect
+                if (!info.state.isFinished || !handledWork.add(info.id)) return@collect
+                val keys = info.outputData.getStringArray(PriceSyncWorker.KEY_NEEDS_STORE).orEmpty().toSet()
+                val missing = core.chains.filter { it.key in keys }
+                if (missing.isNotEmpty()) {
+                    needsNearest.value = missing
+                    pickNearestFor(missing)
+                }
+            }
+        }
+    }
+
+    /** Called when the user grants location, and by the "nearest" button. */
+    fun pickNearestFor(chains: List<Chain> = needsNearest.value) {
+        if (chains.isEmpty() || !finder.hasPermission()) return
+        viewModelScope.launch {
+            val picked = mutableListOf<String>()
+            for (chain in chains) {
+                val result = runCatching { finder.nearest(core.stores.storesForPicker(chain)) }.getOrNull()
+                if (result == null) {
+                    notice.value = "לא הצלחתי לאתר סניף קרוב ל${chain.displayName} – בחרו סניף ידנית"
+                    continue
+                }
+                val (store, km) = result
+                core.stores.setStore(chain, store.storeId, store.name)
+                picked += "${chain.displayName}: ${store.name} (${"%.1f".format(km)} ק\"מ)"
+            }
+            if (picked.isNotEmpty()) {
+                needsNearest.value = needsNearest.value.filterNot { c -> picked.any { it.startsWith(c.displayName) } }
+                notice.value = "נבחר הסניף הקרוב – " + picked.joinToString(" · ")
+                PriceSyncWorker.runNow(app, force = false)
+            }
+        }
+    }
+
+    fun hasLocationPermission() = finder.hasPermission()
+
+    fun dismissNotice() {
+        notice.value = null
+    }
+
     /** Downloads the chain's store list so the user can pick the branch that delivers to them. */
     fun openStorePicker(chain: Chain) {
         storePicker.value = StorePickerUi(chain)
@@ -126,6 +181,11 @@ class MainViewModel(
 
     fun closeStorePicker() {
         storePicker.value = null
+    }
+
+    fun pickNearestInPicker(chain: Chain) {
+        storePicker.value = null
+        pickNearestFor(listOf(chain))
     }
 
     fun pickStore(store: StoreInfo) {

@@ -72,6 +72,7 @@ data class StoreInfo(
     val storeId: String,
     val name: String,
     val city: String?,
+    val address: String? = null,
 )
 
 /** A downloadable file from a chain's transparency portal. */

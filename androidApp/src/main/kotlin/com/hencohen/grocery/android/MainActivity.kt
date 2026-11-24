@@ -1,8 +1,11 @@
 package com.hencohen.grocery.android
 
+import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -39,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -85,6 +89,18 @@ private fun MainScreen(vm: MainViewModel) {
     val sync by vm.sync.collectAsStateWithLifecycle()
     val order by vm.order.collectAsStateWithLifecycle()
     val comparison by vm.comparison.collectAsStateWithLifecycle()
+    val notice by vm.notice.collectAsStateWithLifecycle()
+    val needsNearest by vm.needsNearest.collectAsStateWithLifecycle()
+
+    // Ask for location once a chain needs a nearest branch (no online store in its price files).
+    val locationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) vm.pickNearestFor()
+    }
+    LaunchedEffect(needsNearest) {
+        if (needsNearest.isNotEmpty() && !vm.hasLocationPermission()) {
+            locationLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -108,6 +124,12 @@ private fun MainScreen(vm: MainViewModel) {
             if (sync.running) LinearProgressIndicator(Modifier.fillMaxWidth())
             sync.message?.takeIf { !sync.running }?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            }
+            notice?.let {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+                    TextButton(onClick = vm::dismissNotice) { Text("סגור") }
+                }
             }
             TabRow(selectedTabIndex = tab) {
                 Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("חיפוש") })
@@ -222,7 +244,20 @@ private fun ChainsTab(vm: MainViewModel) {
     val dateFormat = remember { SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()) }
 
     val picker by vm.storePicker.collectAsStateWithLifecycle()
-    picker?.let { StorePickerDialog(it, onPick = vm::pickStore, onDismiss = vm::closeStorePicker) }
+    val locationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) picker?.chain?.let(vm::pickNearestInPicker)
+    }
+    picker?.let { state ->
+        StorePickerDialog(
+            state,
+            onPick = vm::pickStore,
+            onNearest = {
+                if (vm.hasLocationPermission()) vm.pickNearestInPicker(state.chain)
+                else locationLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+            },
+            onDismiss = vm::closeStorePicker,
+        )
+    }
 
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
@@ -304,7 +339,12 @@ private fun ChainCard(
 }
 
 @Composable
-private fun StorePickerDialog(state: StorePickerUi, onPick: (StoreInfo) -> Unit, onDismiss: () -> Unit) {
+private fun StorePickerDialog(
+    state: StorePickerUi,
+    onPick: (StoreInfo) -> Unit,
+    onNearest: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     var filter by remember(state.chain.key) { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -319,8 +359,11 @@ private fun StorePickerDialog(state: StorePickerUi, onPick: (StoreInfo) -> Unit,
                     }
                     state.error != null -> Text("שגיאה: ${state.error}", color = MaterialTheme.colorScheme.error)
                     else -> {
+                        Button(onClick = onNearest, modifier = Modifier.fillMaxWidth()) {
+                            Text("📍 הסניף הקרוב אליי")
+                        }
                         Text(
-                            "בחרו את הסניף שמשלוח אליכם יוצא ממנו (לרוב הקרוב לבית). חנויות אונליין מופיעות ראשונות.",
+                            "או בחרו את הסניף שמשלוח אליכם יוצא ממנו (לרוב הקרוב לבית). חנויות אונליין מופיעות ראשונות.",
                             style = MaterialTheme.typography.bodySmall,
                         )
                         OutlinedTextField(

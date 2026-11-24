@@ -56,7 +56,8 @@ fun Map<String, String>.toStoreInfo(chain: Chain): StoreInfo? {
         chain = chain,
         storeId = normalizeStoreId(id),
         name = firstOf("storename", "branchname") ?: id,
-        city = firstOf("city"),
+        city = firstOf("city", "cityname"),
+        address = firstOf("address", "storeaddress"),
     )
 }
 
