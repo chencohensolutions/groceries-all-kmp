@@ -12,6 +12,8 @@ import okio.BufferedSource
 import okio.FileSystem
 import okio.GzipSource
 import okio.Path
+import okio.Path.Companion.toPath
+import okio.openZip
 import okio.buffer
 import okio.use
 
@@ -46,6 +48,16 @@ class FileDownloader(
         fileSystem.delete(path, mustExist = false)
     }
 
+    private fun openZipEntry(path: Path): BufferedSource {
+        val zip = fileSystem.openZip(path)
+        val entry = zip.listRecursively("/".toPath())
+            .filter { zip.metadata(it).isRegularFile }
+            .sortedByDescending { it.name.endsWith(".xml", ignoreCase = true) }
+            .firstOrNull()
+            ?: error("Empty ZIP: $path")
+        return zip.source(entry).buffer()
+    }
+
     private fun openDecompressed(path: Path): BufferedSource {
         val raw = fileSystem.source(path).buffer()
         val peek = raw.peek()
@@ -53,8 +65,9 @@ class FileDownloader(
         return when (magic) {
             0x1F8B -> GzipSource(raw).buffer()
             0x504B -> {
+                // Some portals (Rami Levy on Cerberus) serve a ZIP even when the name ends in .gz.
                 raw.close()
-                error("ZIP-wrapped price files aren't supported yet: $path")
+                openZipEntry(path)
             }
             else -> {
                 // Portals that lost the session answer with an HTML page instead of the file.
